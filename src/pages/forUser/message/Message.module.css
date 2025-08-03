@@ -1,0 +1,243 @@
+/* Overall container */
+.message-container {
+  height: 100vh; /* Make sure the container takes up the full viewport height */
+  background-color: #f8f9fa; /* Optional: A light background color for the whole page */
+  padding: 20px;
+}
+
+/* Conversation List Styles */
+.conversation-list-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Take up the full height of the parent container */
+}
+
+.conversation-list {
+  background-color: #C0FFD1;
+  border: 2px solid #007bff; /* Primary color for border */
+  border-radius: 10px;
+  padding: 20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.conversation-list h4 {
+  color: #007bff; /* Primary color for heading */
+  margin-bottom: 15px;
+}
+
+.tab-buttons {
+  display: flex;
+  margin-bottom: 15px;
+}
+
+.tab-button {
+  background-color: #fff;
+  border: 1px solid #007bff; /* Primary color for border */
+  color: #007bff; /* Primary color for text */
+  padding: 8px 12px;
+  border-radius: 5px;
+  margin-right: 5px;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.tab-button.active {
+  background-color: #007bff; /* Primary color for active tab */
+  color: #fff;
+}
+
+.conversation-scroll {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.message-item {
+  background-color: #f0f8ff;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.message-item:hover {
+  background-color: #e2f1ff;
+}
+
+.message-item.active {
+  background-color: #007bff; /* Primary color for active item */
+  color: #fff;
+}
+
+.empty-message {
+  text-align: center;
+  color: #6c757d;
+  margin-top: 20px;
+}
+
+/* Chat Window Styles */
+.chat-window-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Take up the full height of the parent container */
+}
+
+.chat-window {
+  background-color: #C0FFD1;
+  border: 2px solid #007bff; /* Primary color for border */
+  border-radius: 10px;
+  padding: 20px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 15px;
+  color: #007bff; /* Primary color for header text */
+}
+
+.chat-header img {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  margin-right: 10px;
+}
+
+.back-button {
+  background-color: transparent;
+  border: none;
+  color: #007bff; /* Primary color for back button */
+  cursor: pointer;
+  margin-right: 10px;
+}
+
+.message-list {
+  flex-grow: 1;
+  overflow-y: auto;
+  padding-right: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.message-bubble {
+  max-width: 80%;
+  margin-bottom: 10px;
+}
+
+.message-content {
+  padding: 10px;
+  border-radius: 10px;
+}
+
+.message-content p {
+  margin-bottom: 5px;
+}
+
+.message-time {
+  font-size: 0.8em;
+  color: #6c757d;
+}
+
+.input-form {
+  margin-top: 15px;
+}
+
+.input-group .form-control {
+  border-color: #007bff; /* Primary color for input border */
+}
+
+.send-button {
+  background-color: #007bff; /* Primary color for send button */
+  border-color: #007bff; /* Primary color for send button border */
+}
+
+.send-button:hover {
+  background-color: #0056b3;
+  border-color: #0056b3;
+}
+
+.empty-chat {
+  text-align: center;
+  color: #6c757d;
+  margin-top: auto;
+  margin-bottom: auto;
+}
+
+/* Active state for message item */
+.message-item.active {
+    background-color: #007bff;
+    color: white;
+}
+
+/* General styling */
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+}
+
+.container {
+    background-color: #C0FFD1;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 900px;
+}
+
+/* Style for each message */
+.message-bubble {
+    background-color: #e5e5ea;
+    border-radius: 20px;
+    padding: 10px 15px;
+    margin-bottom: 8px;
+    display: inline-block;
+    max-width: 70%;
+    word-wrap: break-word;
+}
+
+.message-bubble.user-message {
+    background-color: #007bff;
+    color: white;
+}
+
+/* Input area styles */
+.input-area {
+    display: flex;
+    margin-top: 20px;
+}
+
+.input-area input {
+    flex-grow: 1;
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    margin-right: 10px;
+}
+
+.input-area button {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 20px;
+    cursor: pointer;
+}
+
+/* Typing indicator */
+.typing-indicator {
+    font-style: italic;
+    color: #888;
+    margin-top: 5px;
+}

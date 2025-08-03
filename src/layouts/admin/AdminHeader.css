@@ -1,0 +1,25 @@
+.admin-header {
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+}
+
+.admin-header .navbar-brand {
+  font-weight: bold;
+}
+
+.admin-header .nav-link {
+  padding: 0.5rem 1rem;
+  color: rgba(255,255,255,0.8) !important;
+}
+
+.admin-header .nav-link:hover {
+  color: #fff !important;
+}
+
+#admin-nav-dropdown {
+  color: rgba(255,255,255,0.8);
+}
+
+#admin-nav-dropdown:hover {
+  color: #fff;
+}

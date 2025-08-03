@@ -1,0 +1,18 @@
+.nav-link {
+    transition: all 0.3s ease;
+    border: none !important;
+    background: transparent !important;
+  }
+  
+  .nav-link:hover {
+    transform: translateY(-2px);
+  }
+  
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in;
+  }
+  
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
