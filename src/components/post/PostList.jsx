@@ -40,6 +40,9 @@ const PostLists = ({
 
   const handleShow = () => setShowModal(true);
   const handleClose = () => setShowModal(false);
+
+  const defaultImg = "https://res.cloudinary.com/dc0b0ffa8/image/upload/v1743004500/social_uploads/social_post_1743004498854_0.jpg";
+
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
       handleClose();
@@ -243,7 +246,7 @@ const PostLists = ({
           <div className="card-body">
             <div className="d-flex align-items-center justify-content-between">
               <img
-                src={user?.userImageAvatar || 'https://res.cloudinary.com/dc0b0ffa8/image/upload/v1742827779/default-avatar-icon-of-social-media-user-vector_boxybc.jpg'}
+                src={user?.userImageAvatar || defaultImg}
                 alt="Avatar"
                 className="rounded-circle"
                 style={{ width: '50px', height: '50px', objectFit: 'cover', marginRight: '15px' }}
@@ -272,7 +275,7 @@ const PostLists = ({
             <div className="d-flex justify-content-between align-items-center">
               <div className="d-flex align-items-center">
                 <img
-                  src={post.user?.userImageAvatar || 'default-avatar-url.jpg'}
+                  src={post.user?.userImageAvatar || defaultImg}
                   alt="Avatar"
                   className="rounded-circle me-3"
                   style={{ width: '40px', height: '40px', objectFit: 'cover' }}

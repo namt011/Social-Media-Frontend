@@ -1260,23 +1260,6 @@ useEffect(() => {
     <ThemeProvider theme={theme}>
       <RootStyle>
         <CustomScrollbar />
-        {error && (
-          <Alert 
-            severity="error" 
-            onClose={() => setError(null)} 
-            sx={{ 
-              position: 'absolute', 
-              top: 16, 
-              left: 16, 
-              right: 16,
-              zIndex: 1000,
-              borderRadius: '8px',
-              boxShadow: '0 2px 10px rgba(0,0,0,0.1)'
-            }}
-          >
-            {error}
-          </Alert>
-        )}
 
         {(!isMobile || showMobileList) && (
           <ConversationListStyle sx={{ ...(isMobile && { maxWidth: '100%', borderRight: 'none' }) }}>

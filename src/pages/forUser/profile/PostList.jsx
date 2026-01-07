@@ -11,6 +11,8 @@ const PostList = () => {
   const [isLoading, setIsLoading] = useState(false);
   const loadMoreRef = useRef(null);
 
+  
+
   useEffect(() => {
     fetchPosts(0);
   }, [userID]);

@@ -1,42 +1,61 @@
-import React from 'react'
-import { useRef, useEffect, useState } from 'react'
+import React, { useRef, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import Cookies from 'js-cookie';
+import { toast } from 'react-toastify';
+import './Profile.css';
+
+// Services
+import { GetUserById, UpdateUser } from '../../../service/UserService';
+import { 
+  sendFriendRequest, 
+  respondToFriendRequest, 
+  deleteFriendRequest, 
+  getFriends, 
+  checkFriendshipStatus 
+} from '../../../service/FriendService';
+import ReportServices, { REPORT_TYPES } from '../../../services/ReportSer';
+
+// Components
 import PostList from './PostList';
 import SharedList from './SharedList';
-import Cookies from 'js-cookie';
-import './Profile.css';
-import { toast } from 'react-toastify';
-
-import { GetUserById, UpdateUser } from '../../../service/UserService';
-import { sendFriendRequest, respondToFriendRequest, deleteFriendRequest, getFriends, checkFriendshipStatus } from '../../../service/FriendService';
 import Modal from '../../../components/popup/Modal';
-import CloudinaryUpload from '../../../components/Testupimage';
+import AvatarUploader from '../../../components/AvatarUploader';
 import FriendsListModal from '../../../components/popup/FriendsListModal';
-import ReportServices, { REPORT_TYPES } from '../../../services/ReportSer';
+
+// Constants
+const REPORT_REASONS = [
+  'Spam hoặc nội dung không mong muốn',
+  'Quấy rối hoặc bắt nạt',
+  'Nội dung không phù hợp',
+  'Giả mạo danh tính',
+  'Nội dung bạo lực hoặc có hại',
+  'Thông tin sai lệch',
+  'Vi phạm bản quyền',
+  'Lý do khác'
+];
+
+const FRIENDSHIP_STATUS = {
+  SELF: 'SELF',
+  NOT_FRIENDS: 'NOT_FRIENDS',
+  FRIENDS: 'FRIENDS',
+  REQUEST_SENT: 'REQUEST_SENT',
+  REQUEST_RECEIVED: 'REQUEST_RECEIVED',
+  DECLINED: 'DECLINED'
+};
+
+const DEFAULT_AVATAR = "https://res.cloudinary.com/dc0b0ffa8/image/upload/v1743004500/social_uploads/social_post_1743004498854_0.jpg";
+const DEFAULT_TEXT = "Chưa cập nhật";
 
 const Profile = () => {
   const mediaContainerRef = useRef(null);
   const { userID } = useParams();
-  const [activeTab, setActiveTab] = useState('posts');
-  const [isCurrentUser, setIsCurrentUser] = useState(false);
 
+  // State management
+  const [activeTab, setActiveTab] = useState('posts');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [updateError, setUpdateError] = useState(null);
-  const [isUpdating, setIsUpdating] = useState(false);
-
-  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
-  const [newAvatar, setNewAvatar] = useState(null);
-  const [isUploading, setIsUploading] = useState(false);
-
-  // Report Modal States
-  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const [reportReason, setReportReason] = useState('');
-  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
-  const [reportError, setReportError] = useState(null);
-
+  
+  // User data state
   const [userData, setUserData] = useState({
     userID: null,
     userFirstName: "",
@@ -52,28 +71,162 @@ const Profile = () => {
     isDoBHidden: false,
     isSchoolHidden: false,
     isRelationshipHidden: false,
+    friendCount: 0
   });
 
+  // Friendship state
   const [friendshipStatus, setFriendshipStatus] = useState(null);
   const [friendRequestId, setFriendRequestId] = useState(null);
+  const [isCurrentUser, setIsCurrentUser] = useState(false);
 
+  // Modal states
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const [isFriendsModalOpen, setIsFriendsModalOpen] = useState(false);
-  const [friendsList, setFriendsList] = useState([]);
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+
+  // Loading states
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const [loadingFriends, setLoadingFriends] = useState(false);
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
 
-  // Report reasons
-  const REPORT_REASONS = [
-    'Spam hoặc nội dung không mong muốn',
-    'Quấy rối hoặc bắt nạt',
-    'Nội dung không phù hợp',
-    'Giả mạo danh tính',
-    'Nội dung bạo lực hoặc có hại',
-    'Thông tin sai lệch',
-    'Vi phạm bản quyền',
-    'Lý do khác'
-  ];
+  // Error states
+  const [updateError, setUpdateError] = useState(null);
+  const [reportError, setReportError] = useState(null);
 
-  // Handle Report User
+  // Data states
+  const [friendsList, setFriendsList] = useState([]);
+  const [newAvatar, setNewAvatar] = useState(null);
+  const [reportReason, setReportReason] = useState('');
+
+  // Helper functions
+  const getFullName = () => {
+    return `${userData.userLastName || ""} ${userData.userFirstName || ""}`.trim();
+  };
+
+  const formatDateOfBirth = (dateString) => {
+    if (!dateString) return DEFAULT_TEXT;
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('vi-VN', { 
+        day: '2-digit', 
+        month: '2-digit', 
+        year: 'numeric' 
+      });
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      return DEFAULT_TEXT;
+    }
+  };
+
+  const getDisplayValue = (value, isHidden = false) => {
+    if (isHidden) return null;
+    return value || DEFAULT_TEXT;
+  };
+
+  const getAvatar = () => {
+    return userData.userImageAvatar || DEFAULT_AVATAR;
+  };
+
+  // API Handlers
+const handleAvatarUpload = async (uploadedFiles) => {
+  if (uploadedFiles.length === 0) return;
+
+  try {
+    setIsUploading(true);
+    const avatarFile = uploadedFiles[0];
+
+    const avatarUpdate = {
+      userImageAvatar: avatarFile.url
+    };
+
+    // 🔍 LOG 1: Kiểm tra data trước khi gửi
+    console.log("=== FRONTEND DEBUG ===");
+    console.log("Avatar URL:", avatarFile.url);
+    console.log("Data to send:", avatarUpdate);
+    console.log("JSON stringify:", JSON.stringify(avatarUpdate));
+    console.log("User ID:", userID);
+
+    // Gửi request
+    const response = await UpdateUser(avatarUpdate, userID);
+    
+    // 🔍 LOG 2: Kiểm tra response
+    console.log("Response:", response);
+    console.log("Response data:", response.data);
+
+    // Fetch lại data
+    const userResponse = await GetUserById(userID);
+    console.log("Updated user data:", userResponse.data);
+    
+    setUserData(userResponse.data);
+    setIsAvatarModalOpen(false);
+    setNewAvatar(null);
+    toast.success("Cập nhật ảnh đại diện thành công");
+  } catch (error) {
+    console.error("=== ERROR DEBUG ===");
+    console.error("Error:", error);
+    console.error("Error response:", error.response);
+    console.error("Error data:", error.response?.data);
+    toast.error("Cập nhật ảnh đại diện thất bại");
+  } finally {
+    setIsUploading(false);
+  }
+};
+
+  const handleFriendship = async (action) => {
+    try {
+      switch (action) {
+        case 'add':
+          const response = await sendFriendRequest(userID);
+          if (response.data.success) {
+            setFriendshipStatus(FRIENDSHIP_STATUS.REQUEST_SENT);
+            setFriendRequestId(response.data.data.id);
+            toast.success("Đã gửi lời mời kết bạn");
+          }
+          break;
+          
+        case 'accept':
+          if (!friendRequestId) {
+            console.error('No friend request ID found');
+            return;
+          }
+          await respondToFriendRequest(friendRequestId, 'ACCEPTED');
+          setFriendshipStatus(FRIENDSHIP_STATUS.FRIENDS);
+          toast.success("Đã chấp nhận lời mời kết bạn");
+          break;
+          
+        case 'decline':
+          if (!friendRequestId) {
+            console.error('No friend request ID found');
+            return;
+          }
+          await respondToFriendRequest(friendRequestId, 'DECLINED');
+          setFriendshipStatus(FRIENDSHIP_STATUS.NOT_FRIENDS);
+          setFriendRequestId(null);
+          toast.success("Đã từ chối lời mời kết bạn");
+          break;
+          
+        case 'cancel':
+          if (!friendRequestId) {
+            console.error('No friend request ID found');
+            return;
+          }
+          await deleteFriendRequest(friendRequestId);
+          setFriendshipStatus(FRIENDSHIP_STATUS.NOT_FRIENDS);
+          setFriendRequestId(null);
+          toast.success("Đã hủy yêu cầu kết bạn");
+          break;
+          
+        default:
+          console.error('Invalid action');
+      }
+    } catch (error) {
+      console.error('Error handling friendship:', error);
+      toast.error('Có lỗi xảy ra khi xử lý yêu cầu kết bạn');
+    }
+  };
+
   const handleReportUser = async () => {
     if (!reportReason.trim()) {
       setReportError('Vui lòng chọn lý do báo cáo');
@@ -93,7 +246,6 @@ const Profile = () => {
       const response = await ReportServices.createReport(reportData);
       
       if (response.data.success || response.status === 200) {
-        // Close modal and show success message
         setIsReportModalOpen(false);
         setReportReason('');
         toast.success('Báo cáo đã được gửi thành công. Chúng tôi sẽ xem xét và xử lý.');
@@ -106,13 +258,233 @@ const Profile = () => {
     }
   };
 
-  // Render Report Modal
+  const handleUpdateProfile = async (e) => {
+  e.preventDefault();
+  setIsUpdating(true);
+  setUpdateError(null);
+
+  try {
+    //LOẠI BỎ userID, friendCount, userCreateAt
+    const {
+      userID,
+      friendCount,
+      userCreateAt,
+      ...rest
+    } = userData;
+
+    // ✅ CHỈ GỬI FIELD CÓ TRONG UserUpdateDTO
+    const updatedUser = {
+      userFirstName: rest.userFirstName,
+      userLastName: rest.userLastName,
+      userDateOfBirth: rest.userDateOfBirth,
+      isDoBHidden: rest.isDoBHidden,
+      userGender: rest.userGender,
+      userAddress: rest.userAddress,
+      userSchool: rest.userSchool,
+      isSchoolHidden: rest.isSchoolHidden,
+      userRelationshipStatus: rest.userRelationshipStatus,
+      isRelationshipHidden: rest.isRelationshipHidden,
+      userImageAvatar: rest.userImageAvatar,
+      userImageCover: rest.userImageCover,
+      userDesc: rest.userDesc
+    };
+
+    await UpdateUser(updatedUser, userID);
+
+    const response = await GetUserById(userID);
+    setUserData(response.data);
+    setIsEditModalOpen(false);
+    toast.success("Cập nhật thông tin thành công");
+  } catch (error) {
+    console.error("Update failed:", error);
+    setUpdateError("Cập nhật thất bại. Vui lòng thử lại sau.");
+  } finally {
+    setIsUpdating(false);
+  }
+};
+
+
+  const handleViewFriends = async () => {
+    try {
+      setLoadingFriends(true);
+      setIsFriendsModalOpen(true);
+      const response = await getFriends(userID);
+      if (response.data.success) {
+        setFriendsList(response.data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+      toast.error('Có lỗi khi tải danh sách bạn bè');
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  // Effect for checking friendship status
+  useEffect(() => {
+    const checkFriendStatus = async () => {
+      if (!isCurrentUser && userID) {
+        try {
+          const response = await checkFriendshipStatus(userID);
+          
+          if (response.data.success) {
+            const status = response.data.data.status;
+            const requestId = response.data.data.requestId;
+            
+            setFriendRequestId(requestId);
+            
+            switch (status) {
+              case FRIENDSHIP_STATUS.SELF:
+                setIsCurrentUser(true);
+                setFriendshipStatus(null);
+                break;
+                
+              case FRIENDSHIP_STATUS.NOT_FRIENDS:
+              case FRIENDSHIP_STATUS.FRIENDS:
+              case FRIENDSHIP_STATUS.REQUEST_SENT:
+              case FRIENDSHIP_STATUS.REQUEST_RECEIVED:
+              case FRIENDSHIP_STATUS.DECLINED:
+                setFriendshipStatus(status); 
+                break;
+                
+              default:
+                setFriendshipStatus(FRIENDSHIP_STATUS.NOT_FRIENDS);
+                console.warn('Unknown friendship status:', status);
+                break;
+            }
+          }
+        } catch (error) {
+          console.error('Error checking friendship status:', error);
+          setFriendshipStatus(FRIENDSHIP_STATUS.NOT_FRIENDS);
+        }
+      }
+    };
+
+    checkFriendStatus();
+  }, [userID, isCurrentUser]);
+
+  // Effect for fetching user data
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        setLoading(true);
+        const [userResponse] = await Promise.all([
+          GetUserById(userID),
+          getFriends(userID)
+        ]);
+
+        // Filter response data to only include known fields
+        const userDataFromApi = userResponse.data;
+        const filteredUserData = {
+          userID: userDataFromApi.userID,
+          userFirstName: userDataFromApi.userFirstName,
+          userLastName: userDataFromApi.userLastName,
+          userDateOfBirth: userDataFromApi.userDateOfBirth,
+          userGender: userDataFromApi.userGender,
+          userAddress: userDataFromApi.userAddress,
+          userSchool: userDataFromApi.userSchool,
+          userRelationshipStatus: userDataFromApi.userRelationshipStatus,
+          userImageAvatar: userDataFromApi.userImageAvatar,
+          userCreateAt: userDataFromApi.userCreateAt,
+          userDesc: userDataFromApi.userDesc,
+          isDoBHidden: userDataFromApi.isDoBHidden,
+          isSchoolHidden: userDataFromApi.isSchoolHidden,
+          isRelationshipHidden: userDataFromApi.isRelationshipHidden,
+          friendCount: userDataFromApi.friendCount || 0
+        };
+
+        setUserData(filteredUserData);
+
+        const cookieC_User = Cookies.get('c_user');
+        setIsCurrentUser(cookieC_User === userID);
+
+        setError(null);
+      } catch (error) {
+        console.error("Error fetching data:", error);
+        setError("Không thể tải thông tin người dùng");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (userID) {
+      fetchUserData();
+    }
+  }, [userID]);
+
+  // Render functions
+  const renderFriendshipButton = () => {
+    if (isCurrentUser) return null;
+
+    const buttonConfig = {
+      [FRIENDSHIP_STATUS.FRIENDS]: {
+        text: 'Hủy kết bạn',
+        className: 'btn-outline-danger',
+        action: 'cancel'
+      },
+      [FRIENDSHIP_STATUS.REQUEST_SENT]: {
+        text: 'Hủy yêu cầu',
+        className: 'btn-outline-secondary',
+        action: 'cancel'
+      },
+      [FRIENDSHIP_STATUS.REQUEST_RECEIVED]: [
+        {
+          text: 'Chấp nhận',
+          className: 'btn-primary me-2',
+          action: 'accept'
+        },
+        {
+          text: 'Từ chối',
+          className: 'btn-outline-secondary',
+          action: 'decline'
+        }
+      ],
+      [FRIENDSHIP_STATUS.NOT_FRIENDS]: {
+        text: 'Kết bạn',
+        className: 'btn-primary me-2',
+        action: 'add'
+      }
+    };
+
+    const config = buttonConfig[friendshipStatus];
+
+    if (!config) return null;
+
+    if (Array.isArray(config)) {
+      return (
+        <>
+          {config.map((btn, index) => (
+            <button
+              key={index}
+              className={`btn ${btn.className}`}
+              onClick={() => handleFriendship(btn.action)}
+            >
+              {btn.text}
+            </button>
+          ))}
+        </>
+      );
+    }
+
+    return (
+      <button
+        className={`btn ${config.className} me-2`}
+        onClick={() => handleFriendship(config.action)}
+      >
+        {config.text}
+      </button>
+    );
+  };
+
   const renderReportModal = () => (
-    <Modal isOpen={isReportModalOpen} onClose={() => {
-      setIsReportModalOpen(false);
-      setReportReason('');
-      setReportError(null);
-    }}>
+    <Modal 
+      isOpen={isReportModalOpen} 
+      onClose={() => {
+        setIsReportModalOpen(false);
+        setReportReason('');
+        setReportError(null);
+      }}
+    >
       <div className="p-4">
         <h4 className="mb-4 text-center">
           <i className="bi bi-flag text-danger me-2"></i>
@@ -193,419 +565,36 @@ const Profile = () => {
       </div>
     </Modal>
   );
-
-  // Thêm hàm xử lý upload ảnh đại diện
-  const handleAvatarUpload = async (uploadedFiles) => {
-    if (uploadedFiles.length === 0) return;
-
-    try {
-      setIsUploading(true);
-      const avatarFile = uploadedFiles[0];
-
-      // Gọi API cập nhật avatar
-      const updatedUser = {
-        ...userData,
-        userImageAvatar: avatarFile.url
-      };
-
-      await UpdateUser(updatedUser, userID);
-
-      // Cập nhật dữ liệu local
-      setUserData(prev => ({
-        ...prev,
-        userImageAvatar: avatarFile.url
-      }));
-
-      setIsAvatarModalOpen(false);
-      setNewAvatar(null); // Reset preview
-    } catch (error) {
-      console.error("Avatar update failed:", error);
-      toast.error("Cập nhật ảnh đại diện thất bại");
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  useEffect(() => {
-    const checkFriendStatus = async () => {
-      if (!isCurrentUser && userID) {
-        try {
-          const response = await checkFriendshipStatus(userID);
-          
-          if (response.data.success) {
-            const status = response.data.data.status;
-            // We need to get the requestId from the response
-            const requestId = response.data.data.requestId; // Assuming backend sends requestId
-            setFriendRequestId(requestId);
-            
-            switch (status) {
-              case 'SELF':
-                setIsCurrentUser(true);
-                setFriendshipStatus(null);
-                break;
-                
-              case 'NOT_FRIENDS':
-              case 'FRIENDS':
-              case 'REQUEST_SENT':
-              case 'REQUEST_RECEIVED':
-              case 'DECLINED':
-                setFriendshipStatus(status); 
-                break;
-                
-              default:
-                setFriendshipStatus('NOT_FRIENDS');
-                console.warn('Unknown friendship status:', status);
-                break;
-            }
-          } else {
-            console.error('Error in friendship status response:', response.data.message);
-            setFriendshipStatus('NOT_FRIENDS');
-          }
-        } catch (error) {
-          console.error('Error checking friendship status:', error);
-          setFriendshipStatus('NOT_FRIENDS');
-        }
-      }
-    };
-
-    checkFriendStatus();
-  }, [userID, isCurrentUser]);
-
-  const handleFriendship = async (action) => {
-    try {
-      switch (action) {
-        case 'add':
-          const response = await sendFriendRequest(userID);
-          if (response.data.success) {
-            setFriendshipStatus('REQUEST_SENT');
-            setFriendRequestId(response.data.data.id); // Save the new request ID
-          }
-          break;
-          
-        case 'accept':
-          if (!friendRequestId) {
-            console.error('No friend request ID found');
-            return;
-          }
-          await respondToFriendRequest(friendRequestId, 'ACCEPTED');
-          setFriendshipStatus('FRIENDS');
-          break;
-          
-        case 'decline':
-          if (!friendRequestId) {
-            console.error('No friend request ID found');
-            return;
-          }
-          await respondToFriendRequest(friendRequestId, 'DECLINED');
-          setFriendshipStatus('NOT_FRIENDS');
-          setFriendRequestId(null);
-          break;
-          
-        case 'cancel':
-          if (!friendRequestId) {
-            console.error('No friend request ID found');
-            return;
-          }
-          await deleteFriendRequest(friendRequestId);
-          setFriendshipStatus('NOT_FRIENDS');
-          setFriendRequestId(null);
-          break;
-          
-        default:
-          console.error('Invalid action');
-      }
-    } catch (error) {
-      console.error('Error handling friendship:', error);
-      alert('Có lỗi xảy ra khi xử lý yêu cầu kết bạn');
-    }
-  };
-
-  const renderFriendshipButton = () => {
-    if (isCurrentUser) return null;
-
-    switch (friendshipStatus) {
-      case 'FRIENDS':
-        return (
-          <button
-            className="btn btn-outline-danger me-2"
-            onClick={() => handleFriendship('cancel')}
-          >
-            Hủy kết bạn
-          </button>
-        );
-        
-      case 'REQUEST_SENT':
-        return (
-          <button
-            className="btn btn-outline-secondary me-2"
-            onClick={() => handleFriendship('cancel')}
-          >
-            Hủy yêu cầu
-          </button>
-        );
-        
-      case 'REQUEST_RECEIVED':
-        return (
-          <>
-            <button
-              className="btn btn-primary me-2"
-              onClick={() => handleFriendship('accept')}
-            >
-              Chấp nhận
-            </button>
-            <button
-              className="btn btn-outline-secondary"
-              onClick={() => handleFriendship('decline')}
-            >
-              Từ chối
-            </button>
-          </>
-        );
-        
-      case 'NOT_FRIENDS':
-        return (
-          <button
-            className="btn btn-primary me-2"
-            onClick={() => handleFriendship('add')}
-          >
-            Kết bạn
-          </button>
-        );
-        
-      default:
-        return null;
-    }
-  };
-
-  // Thêm phần JSX cho avatar upload modal
+  
   const renderAvatarModal = () => (
-    <Modal isOpen={isAvatarModalOpen} onClose={() => setIsAvatarModalOpen(false)}>
-      <div className="p-4 text-center">
-        <h4 className="mb-4">Cập nhật ảnh đại diện</h4>
+<Modal
+  isOpen={isAvatarModalOpen}
+  onClose={() => setIsAvatarModalOpen(false)}
+>
+  <AvatarUploader
+    userID={userID}
+    currentAvatar={getAvatar()}
+    UpdateUser={UpdateUser}
+    GetUserById={GetUserById}
+    onSuccess={(updatedUser) => setUserData(updatedUser)}
+    onClose={() => setIsAvatarModalOpen(false)}
+  />
+</Modal>
 
-        <div className="mb-4 position-relative">
-          <div className="avatar-preview-container">
-            <img
-              src={newAvatar || getAvatar()}
-              alt="Preview"
-              className="rounded-circle img-fluid"
-              style={{
-                width: '200px',
-                height: '200px',
-                objectFit: 'cover',
-                filter: isUploading ? 'blur(2px)' : 'none'
-              }}
-            />
-            {isUploading && (
-              <div className="upload-overlay">
-                <div className="spinner-border text-light" role="status">
-                  <span className="visually-hidden">Loading...</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <CloudinaryUpload
-          onFileUpload={handleAvatarUpload}
-          fileType="image"
-          maxFiles={1}
-          showPreview={false}
-          buttonText="Chọn ảnh mới"
-          disabled={isUploading}
-        />
-
-        <div className="mt-3 text-muted">
-          <small>Ảnh phải có định dạng JPG, PNG hoặc GIF và nhỏ hơn 10MB</small>
-        </div>
-      </div>
-    </Modal>
   );
 
-  // Format date of birth
-  const formatDateOfBirth = (dateString) => {
-    if (!dateString) return "";
-    const date = new Date(dateString);
-    return date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-  };
-
-  // Get full name
-  const getFullName = () => {
-    return (userData.userLastName || "") + " " + (userData.userFirstName || "");
-  };
-
-  // Get relationship status
-  const getRelationshipStatus = () => {
-    return userData.userRelationshipStatus ? userData.userRelationshipStatus : "Chưa cập nhật";
-  };
-
-  // Get school
-  const getSchool = () => {
-    return userData.userSchool ? userData.userSchool : "Chưa cập nhật";
-  };
-
-  // Get address
-  const getAddress = () => {
-    return userData.userAddress ? userData.userAddress : "Chưa cập nhật";
-  };
-
-  // Get avatar
-  const getAvatar = () => {
-    return userData.userImageAvatar ? userData.userImageAvatar : "https://res.cloudinary.com/dc0b0ffa8/image/upload/v1743004500/social_uploads/social_post_1743004498854_0.jpg";
-  };
-
-  // Get user description
-  const getUserDesc = () => {
-    return userData.userDesc ? userData.userDesc : "Chưa cập nhật";
-  };
-
-  useEffect(() => {
-    const fetchUserData = async () => {
-      try {
-        setLoading(true);
-        const [userResponse, friendshipResponse] = await Promise.all([
-          GetUserById(userID),
-          getFriends(userID)
-        ]);
-
-        const checkFriendRequest = async () => {
-          try {
-            const response = await checkFriendshipStatus(userID);
-            if (response.data.exists) {
-              setFriendRequestId(response.data.requestId);
-              setFriendshipStatus(response.data.status);
-            }
-          } catch (err) {
-            console.error('Error checking friend request:', err);
-          }
-        };
-
-        
-
-        setUserData(userResponse.data);
-
-        // Check if current user matches the profile being viewed
-        const cookieC_User = Cookies.get('c_user');
-        setIsCurrentUser(cookieC_User === userID);
-
-        checkFriendRequest();
-        // Check friendship status
-        const friends = friendshipResponse.data.data;
-        const friendship = friends.find(f =>
-          f.sender.userID === userID || f.receiver.userID === userID
-        );
-
-        if (friendship) {
-          setFriendRequestId(friendship.id);
-          if (friendship.status === 'accepted') {
-            setFriendshipStatus('friends');
-          } else if (friendship.status === 'pending') {
-            setFriendshipStatus(friendship.sender.userID === userID ? 'received' : 'pending');
-          }
-        }
-
-        setError(null);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-        setError("Failed to load user profile");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserData();
-  }, [userID]);
-
-  const handleViewFriends = async () => {
-    try {
-      setLoadingFriends(true);
-      setIsFriendsModalOpen(true);
-      const response = await getFriends(userID);
-      if (response.data.success) {
-        setFriendsList(response.data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching friends:', error);
-    } finally {
-      setLoadingFriends(false);
+  const renderContent = () => {
+    switch (activeTab) {
+      case 'posts':
+        return <PostList />;
+      case 'shared':
+        return <SharedList />;
+      default:
+        return <PostList />;
     }
   };
 
-  // Function to handle Edit Profile click
-  const handleEditProfile = () => {
-    setIsEditModalOpen(true);
-  };
-
-  const handleUpdateProfile = async (e) => {
-    e.preventDefault();
-    setIsUpdating(true);
-    setUpdateError(null);
-
-    try {
-      const updatedUser = {
-        ...userData,
-        userDateOfBirth: userData.userDateOfBirth || new Date().toISOString(),
-        userCreateAt: userData.userCreateAt || new Date().toISOString()
-      };
-
-      await UpdateUser(updatedUser, userID);
-      // Refresh user data
-      const response = await GetUserById(userID);
-      setUserData(response.data);
-      setIsEditModalOpen(false);
-    } catch (error) {
-      console.error("Update failed:", error);
-      setUpdateError("Cập nhật thất bại. Vui lòng thử lại sau.");
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const renderAvatarSection = () => (
-    <div className="col-md-3 text-center position-relative">
-      <img
-        src={getAvatar()}
-        alt="Profile"
-        className="rounded-circle img-fluid"
-        style={{ minWidth: '250px', height: '250px', objectFit: 'cover' }}
-      />
-
-      {isCurrentUser && (
-        <button
-          className="btn btn-primary position-absolute bottom-0 end-0 rounded-circle"
-          style={{ width: '40px', height: '40px' }}
-          onClick={() => setIsAvatarModalOpen(true)}
-          title="Đổi ảnh đại diện"
-        >
-          <i className="bi bi-camera"></i>
-        </button>
-      )}
-    </div>
-  );
-
-
-  const sharedPosts = [/* Dữ liệu bài viết được chia sẻ */];
-
-  const posts = [
-  ];
-
-  const handleTabChange = (tab) => {
-    setActiveTab(tab);
-  };
-
-  // Trong Profile.jsx
-const renderContent = () => {
-  switch (activeTab) {
-    case 'posts':
-      return <PostList/>;
-    case 'shared':
-      return <SharedList />;
-    default:
-      return <PostList/>;
-  }
-};
-
-
+  // Loading and Error states
   if (loading) {
     return (
       <div className="container mt-5 text-center">
@@ -629,203 +618,194 @@ const renderContent = () => {
 
   return (
     <>
-      <div>
-        <div className="container mt-3">
-          {renderAvatarModal()}
-          {renderReportModal()}
-          <header className="profile-header">
-  <div className="container py-4">
-    <div className="row g-4">
-      {/* Profile Image Section */}
-      <div className="col-12 col-md-4 col-lg-3">
-        <div className="position-relative text-center">
-          <img
-            src={getAvatar()}
-            alt="Profile"
-            className="rounded-circle img-thumbnail"
-            style={{
-              width: '200px',
-              height: '200px',
-              objectFit: 'cover',
-              margin: '0 auto'
-            }}
-          />
-          {isCurrentUser && (
-            <button
-              className="btn btn-primary btn-sm position-absolute bottom-0 end-50 translate-middle-x rounded-circle"
-              style={{ width: '35px', height: '35px' }}
-              onClick={() => setIsAvatarModalOpen(true)}
-              title="Đổi ảnh đại diện"
-            >
-              <i className="bi bi-camera"></i>
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Profile Info Section */}
-      <div className="col-12 col-md-8 col-lg-9">
-        <div className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
-          <div className="w-50">
-            <h3 className="mb-2">{getFullName()}</h3>
-            
-            {/* Stats Row */}
-            <div className="d-flex align-items-center gap-4 text-muted mb-3">
-              <div className="d-flex align-items-center">
-                <i className="bi bi-file-post fs-5 me-2"></i>
-                <span>{posts.length} bài viết</span>
+      <div className="container mt-3">
+        {renderAvatarModal()}
+        {renderReportModal()}
+        
+        {/* Profile Header */}
+        <header className="profile-header">
+          <div className="container py-4">
+            <div className="row g-4">
+              {/* Profile Image Section */}
+              <div className="col-12 col-md-4 col-lg-3">
+                <div className="position-relative text-center">
+                  <img
+                    src={getAvatar()}
+                    alt="Profile"
+                    className="rounded-circle img-thumbnail"
+                    style={{
+                      width: '200px',
+                      height: '200px',
+                      objectFit: 'cover',
+                      margin: '0 auto'
+                    }}
+                  />
+                  {isCurrentUser && (
+                    <button
+                      className="btn btn-primary btn-sm position-absolute bottom-0 end-50 translate-middle-x rounded-circle"
+                      style={{ width: '35px', height: '35px' }}
+                      onClick={() => setIsAvatarModalOpen(true)}
+                      title="Đổi ảnh đại diện"
+                    >
+                      <i className="bi bi-camera"></i>
+                    </button>
+                  )}
+                </div>
               </div>
-              <button 
-                className="btn btn-link text-decoration-none p-0 d-flex align-items-center text-muted"
-                onClick={handleViewFriends}
-              >
-                <i className="bi bi-people fs-5 me-2"></i>
-                <span>{friendsList.length} bạn bè</span>
-              </button>
+
+              {/* Profile Info Section */}
+              <div className="col-12 col-md-8 col-lg-9">
+                <div className="d-flex flex-column flex-md-row justify-content-between align-items-start gap-3">
+                  <div className="w-50">
+                    <h3 className="mb-2">{getFullName()}</h3>
+                    
+                    {/* Stats Row */}
+                    <div className="d-flex align-items-center gap-4 text-muted mb-3">
+                      <div className="d-flex align-items-center">
+                        <i className="bi bi-file-post fs-5 me-2"></i>
+                        <span>0 bài viết</span>
+                      </div>
+                      <button 
+                        className="btn btn-link text-decoration-none p-0 d-flex align-items-center text-muted"
+                        onClick={handleViewFriends}
+                      >
+                        <i className="bi bi-people fs-5 me-2"></i>
+                        <span>{userData.friendCount} bạn bè</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="d-flex gap-2 w-100 w-md-auto justify-content-center justify-content-md-end">
+                    {isCurrentUser ? (
+                      <button
+                        className="btn btn-outline-primary rounded-pill px-4"
+                        onClick={() => setIsEditModalOpen(true)}
+                      >
+                        <i className="bi bi-pencil me-2"></i>
+                        <span className="d-none d-sm-inline">Chỉnh sửa</span>
+                      </button>
+                    ) : (
+                      <>
+                        {renderFriendshipButton()}
+                        <button className="btn btn-primary rounded-pill px-4 me-2">
+                          <i className="bi bi-chat me-2"></i>
+                          <span className="d-none d-sm-inline">Nhắn tin</span>
+                        </button>
+                        
+                        {/* Report Button */}
+                        <div className="dropdown">
+                          <button 
+                            className="btn btn-outline-secondary rounded-pill px-3"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            title="Tùy chọn khác"
+                          >
+                            <i className="bi bi-three-dots"></i>
+                          </button>
+                          <ul className="dropdown-menu dropdown-menu-end">
+                            <li>
+                              <button 
+                                className="dropdown-item text-danger"
+                                onClick={() => setIsReportModalOpen(true)}
+                              >
+                                <i className="bi bi-flag me-2"></i>
+                                Báo cáo người dùng
+                              </button>
+                            </li>
+                          </ul>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bio & Details */}
+                <div className="mt-4">
+                  <p className="lead mb-3">{getDisplayValue(userData.userDesc)}</p>
+                  
+                  <div className="d-flex flex-column gap-3">
+                    {getDisplayValue(userData.userRelationshipStatus, userData.isRelationshipHidden) && (
+                      <div className="d-flex align-items-center">
+                        <i className="bi bi-heart-fill text-danger me-3" style={{fontSize: '1.2rem'}}></i>
+                        <span>{getDisplayValue(userData.userRelationshipStatus)}</span>
+                      </div>
+                    )}
+                    
+                    {getDisplayValue(userData.userSchool, userData.isSchoolHidden) && (
+                      <div className="d-flex align-items-center">
+                        <i className="bi bi-building text-primary me-3" style={{fontSize: '1.2rem'}}></i>
+                        <span>Đang học tại {getDisplayValue(userData.userSchool)}</span>
+                      </div>
+                    )}
+
+                    <div className="d-flex align-items-center">
+                      <i className="bi bi-geo-alt-fill text-success me-3" style={{fontSize: '1.2rem'}}></i>
+                      <span>{getDisplayValue(userData.userAddress)}</span>
+                    </div>
+
+                    {!userData.isDoBHidden && (
+                      <div className="d-flex align-items-center">
+                        <i className="bi bi-calendar2-event text-info me-3" style={{fontSize: '1.2rem'}}></i>
+                        <span>{formatDateOfBirth(userData.userDateOfBirth)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
+        </header>
 
-          {/* Action Buttons */}
-          <div className="d-flex gap-2 w-100 w-md-auto justify-content-center justify-content-md-end">
-            {isCurrentUser ? (
+        {/* Tab Navigation */}
+        <div className="container">
+          <ul className="nav nav-tabs nav-fill mt-2 mb-2 border-bottom-0 justify-content-center">
+            <li className="nav-item" style={{maxWidth: '200px'}} role="presentation">
               <button
-                className="btn btn-outline-primary rounded-pill px-4"
-                onClick={handleEditProfile}
+                className={`nav-link position-relative p-2 fs-6 ${
+                  activeTab === 'posts' ? 'active text-primary' : 'text-muted'
+                }`}
+                onClick={() => setActiveTab('posts')}
               >
-                <i className="bi bi-pencil me-2"></i>
-                <span className="d-none d-sm-inline">Chỉnh sửa</span>
-              </button>
-            ) : (
-              <>
-                {renderFriendshipButton()}
-                <button 
-                  className="btn btn-primary rounded-pill px-4 me-2"
-                >
-                  <i className="bi bi-chat me-2"></i>
-                  <span className="d-none d-sm-inline">Nhắn tin</span>
-                </button>
-                
-                {/* Report Button */}
-                <div className="dropdown">
-                  <button 
-                    className="btn btn-outline-secondary rounded-pill px-3"
-                    type="button"
-                    data-bs-toggle="dropdown"
-                    aria-expanded="false"
-                    title="Tùy chọn khác"
-                  >
-                    <i className="bi bi-three-dots"></i>
-                  </button>
-                  <ul className="dropdown-menu dropdown-menu-end">
-                    <li>
-                      <button 
-                        className="dropdown-item text-danger"
-                        onClick={() => setIsReportModalOpen(true)}
-                      >
-                        <i className="bi bi-flag me-2"></i>
-                        Báo cáo người dùng
-                      </button>
-                    </li>
-                  </ul>
+                <div className="d-flex align-items-center justify-content-center gap-1">
+                  <i className="bi bi-grid fs-5 me-1"></i>
+                  <span>Bài viết</span>
                 </div>
-              </>
-            )}
+                {activeTab === 'posts' && (
+                  <div className="position-absolute bottom-0 start-50 translate-middle-x bg-primary" 
+                       style={{ width: '70%', height: '2px' }} />
+                )}
+              </button>
+            </li>
+
+            <li className="nav-item" style={{maxWidth: '200px'}} role="presentation">
+              <button
+                className={`nav-link position-relative p-2 fs-6 ${
+                  activeTab === 'shared' ? 'active text-primary' : 'text-muted'
+                }`}
+                onClick={() => setActiveTab('shared')}
+              >
+                <div className="d-flex align-items-center justify-content-center gap-1">
+                  <i className="bi bi-share fs-5 me-1"></i>
+                  <span>Đã chia sẻ</span>
+                </div>
+                {activeTab === 'shared' && (
+                  <div className="position-absolute bottom-0 start-50 translate-middle-x bg-primary" 
+                       style={{ width: '70%', height: '2px' }} />
+                )}
+              </button>
+            </li>
+          </ul>
+
+          {/* Tab Content */}
+          <div className="tab-content pt-3">
+            {renderContent()}
           </div>
         </div>
-
-        {/* Bio & Details */}
-        <div className="mt-4">
-  <p className="lead mb-3">{getUserDesc()}</p>
-  
-  <div className="d-flex flex-column gap-3">
-    {!userData.isRelationshipHidden && (
-      <div>
-        <div className="d-flex align-items-center">
-          <i className="bi bi-heart-fill text-danger me-3" style={{fontSize: '1.2rem'}}></i>
-          <span>{getRelationshipStatus()}</span>
-        </div>
-      </div>
-    )}
-    
-    {!userData.isSchoolHidden && (
-      <div>
-        <div className="d-flex align-items-center">
-          <i className="bi bi-building text-primary me-3" style={{fontSize: '1.2rem'}}></i>
-          <span>Đang học tại {getSchool()}</span>
-        </div>
-      </div>
-    )}
-
-    <div>
-      <div className="d-flex align-items-center">
-        <i className="bi bi-geo-alt-fill text-success me-3" style={{fontSize: '1.2rem'}}></i>
-        <span>{getAddress()}</span>
-      </div>
-    </div>
-
-    {!userData.isDoBHidden && (
-      <div>
-        <div className="d-flex align-items-center">
-          <i className="bi bi-calendar2-event text-info me-3" style={{fontSize: '1.2rem'}}></i>
-          <span>{formatDateOfBirth(userData.userDateOfBirth)}</span>
-        </div>
-      </div>
-    )}
-  </div>
-</div>
-      </div>
-    </div>
-  </div>
-</header>
-
-{/* Tab Navigation */}
-<div className="container">
-  <ul className="nav nav-tabs nav-fill mt-2 mb-2 border-bottom-0 justify-content-center">
-    <li className="nav-item" style={{maxWidth: '200px'}} role="presentation">
-      <button
-        className={`nav-link position-relative p-2 fs-6 ${
-          activeTab === 'posts' ? 'active text-primary' : 'text-muted'
-        }`}
-        onClick={() => handleTabChange('posts')}
-      >
-        <div className="d-flex align-items-center justify-content-center gap-1">
-          <i className="bi bi-grid fs-5 me-1"></i>
-          <span>Bài viết</span>
-        </div>
-        {activeTab === 'posts' && (
-          <div className="position-absolute bottom-0 start-50 translate-middle-x bg-primary" 
-               style={{ width: '70%', height: '2px' }} />
-        )}
-      </button>
-    </li>
-
-    <li className="nav-item" style={{maxWidth: '200px'}} role="presentation">
-      <button
-        className={`nav-link position-relative p-2 fs-6 ${
-          activeTab === 'shared' ? 'active text-primary' : 'text-muted'
-        }`}
-        onClick={() => handleTabChange('shared')}
-      >
-        <div className="d-flex align-items-center justify-content-center gap-1">
-          <i className="bi bi-share fs-5 me-1"></i>
-          <span>Đã chia sẻ</span>
-        </div>
-        {activeTab === 'shared' && (
-          <div className="position-absolute bottom-0 start-50 translate-middle-x bg-primary" 
-               style={{ width: '70%', height: '2px' }} />
-        )}
-      </button>
-    </li>
-  </ul>
-
-  {/* Nội dung tab */}
-  <div className="tab-content pt-3">
-    {renderContent()}
-  </div>
-</div>
-        </div>
       </div>
 
+      {/* Modals */}
       <FriendsListModal
         isOpen={isFriendsModalOpen}
         onClose={() => setIsFriendsModalOpen(false)}
@@ -833,6 +813,7 @@ const renderContent = () => {
         loadingFriends={loadingFriends}
       />
 
+      {/* Edit Profile Modal */}
       <Modal
         isOpen={isEditModalOpen}
         onClose={() => setIsEditModalOpen(false)}
@@ -844,292 +825,343 @@ const renderContent = () => {
           }
         }}
       >
-        <div className="p-4 d-flex flex-column h-100">
-          <h4 className="text-center mb-4" style={{ color: '#2d3436', fontWeight: '600' }}>
-            <i className="bi bi-pencil-square me-2" style={{ color: 'rgb(16, 155, 53)' }}></i>
-            Chỉnh sửa thông tin cá nhân
-          </h4>
-
-          {updateError && (
-            <div className="alert alert-danger d-flex align-items-center mb-4">
-              <i className="bi bi-exclamation-triangle-fill me-2"></i>
-              {updateError}
-            </div>
-          )}
-
-          <form
-            onSubmit={handleUpdateProfile}
-            className="flex-grow-1 d-flex flex-column overflow-hidden"
-          >
-            <div
-              className="flex-grow-1 overflow-auto pe-3"
-              style={{ maxHeight: 'calc(100vh - 240px)' }}
-            >
-              <div className="row g-4">
-                {/* Section 1 */}
-                <div className="col-12">
-                  <div className="card border-0 shadow-sm p-3" style={{ border: '2px solid rgb(16, 155, 53)' }}>
-                    <h5 className="mb-3" style={{ color: 'rgb(16, 155, 53)' }}>
-                      <i className="bi bi-person-badge me-2"></i>
-                      Thông tin cơ bản
-                    </h5>
-                    {/* ... giữ nguyên các phần input ... */}
-                    <div className="row g-3">
-                      <div className="col-md-6">
-                        <div className="form-floating">
-                          <input
-                            type="text"
-                            className="form-control"
-                            id="lastName"
-                            placeholder="Họ"
-                            value={userData.userLastName}
-                            onChange={(e) => setUserData({ ...userData, userLastName: e.target.value })}
-                          />
-                          <label htmlFor="lastName" className="text-muted">
-                            <i className="bi bi-person me-2"></i>
-                            Họ
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="col-md-6">
-                        <div className="form-floating">
-                          <input
-                            type="text"
-                            className="form-control"
-                            id="firstName"
-                            placeholder="Tên"
-                            value={userData.userFirstName}
-                            onChange={(e) => setUserData({ ...userData, userFirstName: e.target.value })}
-                          />
-                          <label htmlFor="firstName" className="text-muted">
-                            <i className="bi bi-person me-2"></i>
-                            Tên
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="col-12">
-                        <div className="form-floating">
-                          <textarea
-                            className="form-control"
-                            placeholder="Mô tả bản thân"
-                            id="bio"
-                            style={{ height: '100px' }}
-                            value={userData.userDesc}
-                            onChange={(e) => setUserData({ ...userData, userDesc: e.target.value })}
-                          />
-                          <label htmlFor="bio" className="text-muted">
-                            <i className="bi bi-pencil me-2"></i>
-                            Mô tả bản thân
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 2 */}
-                <div className="col-12">
-                  <div className="card border-0 shadow-sm p-3" style={{ border: '2px solid #C0FFD1' }}>
-                    <h5 className="mb-3" style={{ color: 'rgb(16, 155, 53)' }}>
-                      <i className="bi bi-info-circle me-2"></i>
-                      Thông tin cá nhân
-                    </h5>
-                    {/* ... giữ nguyên các phần input ... */}
-                    <div className="row g-3">
-                      <div className="col-md-6">
-                        <div className="form-floating">
-                          <input
-                            type="date"
-                            className="form-control"
-                            id="dob"
-                            value={userData.userDateOfBirth?.split('T')[0]}
-                            onChange={(e) => setUserData({ ...userData, userDateOfBirth: e.target.value })}
-                          />
-                          <label htmlFor="dob" className="text-muted">
-                            <i className="bi bi-calendar3 me-2"></i>
-                            Ngày sinh
-                          </label>
-                        </div>
-                        <div className="form-check mt-2 ms-1">
-                          <input
-                            type="checkbox"
-                            className="form-check-input"
-                            id="hideDob"
-                            checked={userData.isDoBHidden}
-                            onChange={(e) => setUserData({ ...userData, isDoBHidden: e.target.checked })}
-                          />
-                          <label htmlFor="hideDob" className="form-check-label text-muted">
-                            Ẩn ngày sinh
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="col-md-6">
-                        <div className="form-floating">
-                          <select
-                            className="form-select"
-                            id="gender"
-                            value={userData.userGender}
-                            onChange={(e) => setUserData({ ...userData, userGender: e.target.value })}
-                          >
-                            <option value="">Chọn giới tính</option>
-                            <option value="Male">Nam</option>
-                            <option value="Female">Nữ</option>
-                            <option value="Other">Khác</option>
-                          </select>
-                          <label htmlFor="gender" className="text-muted">
-                            <i className="bi bi-gender-ambiguous me-2"></i>
-                            Giới tính
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="col-12">
-                        <div className="form-floating">
-                          <input
-                            type="text"
-                            className="form-control"
-                            id="address"
-                            placeholder="Địa chỉ"
-                            value={userData.userAddress}
-                            onChange={(e) => setUserData({ ...userData, userAddress: e.target.value })}
-                          />
-                          <label htmlFor="address" className="text-muted">
-                            <i className="bi bi-geo-alt me-2"></i>
-                            Địa chỉ
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Section 3 */}
-                <div className="col-12">
-                  <div className="card border-0 shadow-sm p-3" style={{ border: '2px solid #C0FFD1' }}>
-                    <h5 className="mb-3" style={{ color: 'rgb(16, 155, 53)' }}>
-                      <i className="bi bi-book me-2"></i>
-                      Học vấn & Mối quan hệ
-                    </h5>
-                    {/* ... giữ nguyên các phần input ... */}
-                    <div className="row g-3">
-                      <div className="col-md-6">
-                        <div className="form-floating">
-                          <input
-                            type="text"
-                            className="form-control"
-                            id="school"
-                            placeholder="Trường học"
-                            value={userData.userSchool}
-                            onChange={(e) => setUserData({ ...userData, userSchool: e.target.value })}
-                          />
-                          <label htmlFor="school" className="text-muted">
-                            <i className="bi bi-building me-2"></i>
-                            Trường học
-                          </label>
-                        </div>
-                        <div className="form-check mt-2 ms-1">
-                          <input
-                            type="checkbox"
-                            className="form-check-input"
-                            id="hideSchool"
-                            checked={userData.isSchoolHidden}
-                            onChange={(e) => setUserData({ ...userData, isSchoolHidden: e.target.checked })}
-                          />
-                          <label htmlFor="hideSchool" className="form-check-label text-muted">
-                            Ẩn trường học
-                          </label>
-                        </div>
-                      </div>
-
-                      <div className="col-md-6">
-                        <div className="form-floating">
-                          <select
-                            className="form-select"
-                            id="relationship"
-                            value={userData.userRelationshipStatus}
-                            onChange={(e) => setUserData({ ...userData, userRelationshipStatus: e.target.value })}
-                          >
-                            <option value="">Chọn tình trạng</option>
-                            <option value="Single">Độc thân</option>
-                            <option value="In a relationship">Hẹn hò</option>
-                            <option value="Married">Đã kết hôn</option>
-                          </select>
-                          <label htmlFor="relationship" className="text-muted">
-                            <i className="bi bi-heart me-2"></i>
-                            Tình trạng quan hệ
-                          </label>
-                        </div>
-                        <div className="form-check mt-2 ms-1">
-                          <input
-                            type="checkbox"
-                            className="form-check-input"
-                            id="hideRelationship"
-                            checked={userData.isRelationshipHidden}
-                            onChange={(e) => setUserData({ ...userData, isRelationshipHidden: e.target.checked })}
-                          />
-                          <label htmlFor="hideRelationship" className="form-check-label text-muted">
-                            Ẩn tình trạng
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Phần nút bấm */}
-            <div
-              className="pt-4 border-top sticky-bottom bg-white"
-              style={{
-                position: 'sticky',
-                bottom: 0,
-                zIndex: 10
-              }}
-            >
-              <div className="d-flex justify-content-end gap-3">
-                <button
-                  type="button"
-                  className="btn  btn-outline-secondary rounded-pill px-4"
-                  style={{ borderColor: '#C0FFD1', color: '#2d3436' }}
-                  onClick={() => setIsEditModalOpen(false)}
-                  disabled={isUpdating}
-                >
-                  <i className="bi bi-x-lg me-2"></i>
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="btn rounded-pill px-4"
-                  style={{
-                    backgroundColor: '#C0FFD1',
-                    color: '#2d3436',
-                    border: '2px solid #C0FFD1'
-                  }}
-                  disabled={isUpdating}
-                >
-                  {isUpdating ? (
-                    <>
-                      <span className="spinner-border spinner-border-sm me-2" role="status"></span>
-                      Đang lưu...
-                    </>
-                  ) : (
-                    <>
-                      <i className="bi bi-check2-circle me-2"></i>
-                      Lưu thay đổi
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-          </form>
-        </div>
+        <EditProfileModalContent
+          userData={userData}
+          setUserData={setUserData}
+          updateError={updateError}
+          isUpdating={isUpdating}
+          onUpdate={handleUpdateProfile}
+          onClose={() => setIsEditModalOpen(false)}
+        />
       </Modal>
     </>
-  )
-}
+  );
+};
 
-export default Profile
+// Extracted Edit Profile Modal Component for better readability
+// Extracted Edit Profile Modal Component for better readability
+const EditProfileModalContent = ({ 
+  userData, 
+  setUserData, 
+  updateError, 
+  isUpdating, 
+  onUpdate, 
+  onClose 
+}) => {
+  
+  const handleInputChange = (field, value) => {
+    setUserData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleCheckboxChange = (field, checked) => {
+    setUserData(prev => ({
+      ...prev,
+      [field]: checked
+    }));
+  };
+
+  const renderFormSection = (title, icon, children, borderColor = '2px solid rgb(16, 155, 53)') => (
+    <div className="col-12">
+      <div className="card border-0 shadow-sm p-3" style={{ border: borderColor }}>
+        <h5 className="mb-3" style={{ color: 'rgb(16, 155, 53)' }}>
+          <i className={`bi ${icon} me-2`}></i>
+          {title}
+        </h5>
+        {children}
+      </div>
+    </div>
+  );
+
+  const renderFormField = (label, icon, id, type = 'text', value, onChange, options = []) => (
+    <div className="form-floating">
+      {type === 'select' ? (
+        <>
+          <select
+            className="form-select"
+            id={id}
+            value={value || ''}
+            onChange={(e) => onChange(id, e.target.value)}
+          >
+            <option value="">Chọn {label.toLowerCase()}</option>
+            {options.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <label htmlFor={id} className="text-muted">
+            <i className={`bi ${icon} me-2`}></i>
+            {label}
+          </label>
+        </>
+      ) : type === 'textarea' ? (
+        <>
+          <textarea
+            className="form-control"
+            placeholder={label}
+            id={id}
+            style={{ height: '100px' }}
+            value={value || ''}
+            onChange={(e) => onChange(id, e.target.value)}
+          />
+          <label htmlFor={id} className="text-muted">
+            <i className={`bi ${icon} me-2`}></i>
+            {label}
+          </label>
+        </>
+      ) : (
+        <>
+          <input
+            type={type}
+            className="form-control"
+            id={id}
+            placeholder={label}
+            value={value || ''}
+            onChange={(e) => onChange(id, e.target.value)}
+          />
+          <label htmlFor={id} className="text-muted">
+            <i className={`bi ${icon} me-2`}></i>
+            {label}
+          </label>
+        </>
+      )}
+    </div>
+  );
+
+const renderCheckbox = (id, label, checked, onChange) => (
+  <div className="form-check mt-2 ms-1">
+    <input
+      type="checkbox"
+      className="form-check-input"
+      id={id}
+      checked={checked || false}
+      onChange={(e) => onChange(id, e.target.checked)}
+    />
+    <label htmlFor={id} className="form-check-label text-muted">
+      {label}
+    </label>
+  </div>
+);
+
+  return (
+    <div className="p-4 d-flex flex-column h-100">
+      <h4 className="text-center mb-4" style={{ color: '#2d3436', fontWeight: '600' }}>
+        <i className="bi bi-pencil-square me-2" style={{ color: 'rgb(16, 155, 53)' }}></i>
+        Chỉnh sửa thông tin cá nhân
+      </h4>
+
+      {updateError && (
+        <div className="alert alert-danger d-flex align-items-center mb-4">
+          <i className="bi bi-exclamation-triangle-fill me-2"></i>
+          {updateError}
+        </div>
+      )}
+
+      <form onSubmit={onUpdate} className="flex-grow-1 d-flex flex-column overflow-hidden">
+        <div 
+          className="flex-grow-1 overflow-auto pe-3" 
+          style={{ maxHeight: 'calc(100vh - 240px)' }}
+        >
+          <div className="row g-4">
+            {/* Section 1: Basic Information */}
+            {renderFormSection(
+              "Thông tin cơ bản",
+              "bi-person-badge",
+              <div className="row g-3">
+                <div className="col-md-6">
+                  {renderFormField(
+                    "Họ",
+                    "bi-person",
+                    "userLastName",
+                    "text",
+                    userData.userLastName,
+                    handleInputChange
+                  )}
+                </div>
+
+                <div className="col-md-6">
+                  {renderFormField(
+                    "Tên",
+                    "bi-person",
+                    "userFirstName",
+                    "text",
+                    userData.userFirstName,
+                    handleInputChange
+                  )}
+                </div>
+
+                <div className="col-12">
+                  {renderFormField(
+                    "Mô tả bản thân",
+                    "bi-pencil",
+                    "userDesc",
+                    "textarea",
+                    userData.userDesc,
+                    handleInputChange
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Section 2: Personal Information */}
+            {renderFormSection(
+              "Thông tin cá nhân",
+              "bi-info-circle",
+              <div className="row g-3">
+                <div className="col-md-6">
+                  {renderFormField(
+                    "Ngày sinh",
+                    "bi-calendar3",
+                    "userDateOfBirth",
+                    "date",
+                    userData.userDateOfBirth?.split('T')[0],
+                    handleInputChange
+                  )}
+                  {renderCheckbox(
+                  "isDoBHidden", // Sửa từ "hideDob" thành "isDoBHidden"
+                  "Ẩn ngày sinh",
+                  userData.isDoBHidden,
+                  handleCheckboxChange
+                  )}
+                </div>
+
+                <div className="col-md-6">
+                  {renderFormField(
+                    "Giới tính",
+                    "bi-gender-ambiguous",
+                    "userGender",
+                    "select",
+                    userData.userGender,
+                    handleInputChange,
+                    [
+                      { value: "Male", label: "Nam" },
+                      { value: "Female", label: "Nữ" },
+                      { value: "Other", label: "Khác" }
+                    ]
+                  )}
+                </div>
+
+                <div className="col-12">
+                  {renderFormField(
+                    "Địa chỉ",
+                    "bi-geo-alt",
+                    "userAddress",
+                    "text",
+                    userData.userAddress,
+                    handleInputChange
+                  )}
+                </div>
+              </div>,
+              "2px solid #C0FFD1"
+            )}
+
+            {/* Section 3: Education & Relationship */}
+            {renderFormSection(
+              "Học vấn & Mối quan hệ",
+              "bi-book",
+              <div className="row g-3">
+                <div className="col-md-6">
+                  {renderFormField(
+                    "Trường học",
+                    "bi-building",
+                    "userSchool",
+                    "text",
+                    userData.userSchool,
+                    handleInputChange
+                  )}
+                  {renderCheckbox(
+                    "isSchoolHidden",
+                    "Ẩn trường học",
+                    userData.isSchoolHidden,
+                    handleCheckboxChange
+                  )}
+                </div>
+
+                <div className="col-md-6">
+                  {renderFormField(
+                    "Tình trạng quan hệ",
+                    "bi-heart",
+                    "userRelationshipStatus",
+                    "select",
+                    userData.userRelationshipStatus,
+                    handleInputChange,
+                    [
+                      { value: "Single", label: "Độc thân" },
+                      { value: "In a relationship", label: "Hẹn hò" },
+                      { value: "Married", label: "Đã kết hôn" }
+                    ]
+                  )}
+                  {renderCheckbox(
+                    "isRelationshipHidden",
+                    "Ẩn tình trạng",
+                    userData.isRelationshipHidden,
+                    handleCheckboxChange
+                  )}
+                </div>
+              </div>,
+              "2px solid #C0FFD1"
+            )}
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div 
+          className="pt-4 border-top sticky-bottom bg-white" 
+          style={{ 
+            position: 'sticky', 
+            bottom: 0, 
+            zIndex: 10 
+          }}
+        >
+          <div className="d-flex justify-content-end gap-3">
+            <button
+              type="button"
+              className="btn btn-outline-secondary rounded-pill px-4"
+              style={{ 
+                borderColor: '#C0FFD1', 
+                color: '#2d3436',
+                minWidth: '120px'
+              }}
+              onClick={onClose}
+              disabled={isUpdating}
+            >
+              <i className="bi bi-x-lg me-2"></i>
+              Hủy bỏ
+            </button>
+            <button
+              type="submit"
+              className="btn rounded-pill px-4"
+              style={{
+                backgroundColor: '#C0FFD1',
+                color: '#2d3436',
+                border: '2px solid #C0FFD1',
+                minWidth: '140px'
+              }}
+              disabled={isUpdating}
+            >
+              {isUpdating ? (
+                <>
+                  <span 
+                    className="spinner-border spinner-border-sm me-2" 
+                    role="status"
+                  ></span>
+                  Đang lưu...
+                </>
+              ) : (
+                <>
+                  <i className="bi bi-check2-circle me-2"></i>
+                  Lưu thay đổi
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+export default Profile;

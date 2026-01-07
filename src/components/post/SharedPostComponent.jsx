@@ -5,11 +5,13 @@ import MediaSection from './MediaSection';
 const SharedPostComponent = ({ sharedPost }) => {
   if (!sharedPost) return null;
 
+  const defaultImg = "https://res.cloudinary.com/dc0b0ffa8/image/upload/v1743004500/social_uploads/social_post_1743004498854_0.jpg";
+
   return (
     <div className="mt-3 p-3" style={{ backgroundColor: '#EAFFF0', borderRadius: '10px', border: '1px solid #A4D2B9' }}>
       <div className="d-flex align-items-start mb-3">
         <img
-          src={sharedPost.user.userImageAvatar || 'https://res.cloudinary.com/dc0b0ffa8/image/upload/v1742827779/default-avatar-icon-of-social-media-user-vector_boxybc.jpg'}
+          src={sharedPost.user.userImageAvatar || defaultImg}
           alt="Avatar"
           className="rounded-circle"
           style={{ width: '40px', height: '40px', objectFit: 'cover', marginRight: '10px' }}

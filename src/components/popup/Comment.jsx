@@ -27,6 +27,8 @@ const Comment = ({ isModalOpenComment, closeModalComment, post }) => {
   const [initialLoad, setInitialLoad] = useState(true);
   const [expandedComments, setExpandedComments] = useState(new Set());
 
+  const defaultImg = "https://res.cloudinary.com/dc0b0ffa8/image/upload/v1743004500/social_uploads/social_post_1743004498854_0.jpg";
+
   useEffect(() => {
     if (isModalOpenComment && post) {
       setPage(0);
@@ -370,7 +372,7 @@ const isCommentExpanded = (commentId) => {
       <div className={`ms-${depth * 2} mt-2`} style={{ borderLeft: depth > 0 ? '2px solid #eee' : 'none' }}>
         <div className="d-flex align-items-start">
           <img
-            src={comment.user?.avatar || 'https://via.placeholder.com/50'}
+            src={comment.user?.avatar || defaultImg}
             className="rounded-circle me-2"
             style={{ width: '40px', height: '40px', objectFit: 'cover' }}
             alt={`${comment.user?.firstName || ''} ${comment.user?.lastName || ''}`}
@@ -469,7 +471,7 @@ const isCommentExpanded = (commentId) => {
             <div className="card-body">
               <div className="d-flex align-items-start">
                 <img
-                  src={post.user?.userImageAvatar}
+                  src={post.user?.userImageAvatar || defaultImg}
                   className="rounded-circle me-3"
                   style={{ width: '40px', height: '40px' }}
                   alt={post.user?.userFirstName}
@@ -499,7 +501,7 @@ const isCommentExpanded = (commentId) => {
             <form onSubmit={handleSubmitComment} className="mb-4">
               <div className="d-flex align-items-center">
                 <img
-                  src={user?.userImageAvatar || 'https://via.placeholder.com/50'}
+                  src={user?.userImageAvatar || defaultImg}
                   className="rounded-circle me-2"
                   style={{ width: '40px', height: '40px' , objectFit: 'cover' }}
                   alt="Your avatar"
